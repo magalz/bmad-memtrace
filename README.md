@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="banner-bmad-method.png" alt="BMad-Memtrace">
+</p>
+
 # BMad-Memtrace
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

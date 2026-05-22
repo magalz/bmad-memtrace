@@ -108,7 +108,6 @@ Based on your session context, I recommend this customized technique sequence:
 - **Why this concludes effectively:** [Final phase rationale]
 - **Expected outcome:** [How this leads to actionable results]
 
-**Total Estimated Time:** [Sum of durations]
 **Session Focus:** [Primary benefit and outcome description]"
 
 ### 4. Present Recommendation Details

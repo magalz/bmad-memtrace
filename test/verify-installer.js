@@ -58,7 +58,9 @@ async function ensureDir(filePath) {
   const dir = path.dirname(filePath);
   try {
     await fs.mkdir(dir, { recursive: true });
-  } catch { /* directory may already exist */ }
+  } catch {
+    /* directory may already exist */
+  }
 }
 
 async function runVerification() {
@@ -221,7 +223,9 @@ async function runVerification() {
   // Clean up
   try {
     await fs.rm(tempDir, { recursive: true, force: true });
-  } catch { /* cleanup errors are non-fatal */ }
+  } catch {
+    /* cleanup errors are non-fatal */
+  }
 
   console.log(`\n${colors.cyan}========================================`);
   console.log(`Verification Summary: Passed: ${passed}, Failed: ${failed}`);

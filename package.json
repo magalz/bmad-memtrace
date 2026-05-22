@@ -40,7 +40,7 @@
     "lint:md": "markdownlint-cli2 \"**/*.md\"",
     "memtrace:restart": "node _bmad/scripts/memtrace/memtrace-restart.mjs",
     "prepare": "command -v husky >/dev/null 2>&1 && husky || exit 0",
-    "quality": "npm run format:check && npm run lint && npm run lint:md && npm run docs:build && npm run test:install && npm run test:urls && npm run validate:refs && npm run validate:skills && npm run validate:boundaries",
+    "quality": "npm run format:check && npm run lint && npm run lint:md && npm run docs:build && npm run test:install && npm run test:urls && npm run validate:refs && npm run validate:skills && npm run validate:tool-refs && npm run validate:boundaries",
     "rebundle": "node tools/installer/bundlers/bundle-web.js rebundle",
     "test": "npm run test:refs && npm run test:install && npm run test:urls && npm run test:channels && npm run lint && npm run lint:md && npm run format:check",
     "test:channels": "node test/test-installer-channels.js",
@@ -49,6 +49,7 @@
     "test:urls": "node test/test-parse-source-urls.js",
     "validate:refs": "node tools/validate-file-refs.js --strict",
     "validate:skills": "node tools/validate-skills.js --strict",
+    "validate:tool-refs": "node tools/validate-tool-refs.mjs --strict",
     "validate:boundaries": "node tools/validate-file-boundaries.mjs --strict"
   },
   "lint-staged": {

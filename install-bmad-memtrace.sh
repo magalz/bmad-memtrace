@@ -13,16 +13,19 @@ while true; do
     echo ""
     echo "This installer sets up the Memtrace-integrated fork of BMad Method."
     echo ""
-    read -r -p "Choose mode [Memtrace / Vanilla]: " mode_choice || { echo "Error: Unexpected end of input. Aborting."; exit 1; }
-    mode_choice=$(printf '%s' "$mode_choice" | tr '[:upper:]' '[:lower:]')
+    echo "  1) Memtrace  — Install with Memtrace structural analysis"
+    echo "  2) Vanilla   — Abort (redirects to official BMad Method)"
+    echo ""
+    read -r -p "Choose [1/2]: " mode_choice || { echo "Error: Unexpected end of input. Aborting."; exit 1; }
+    mode_choice=$(printf '%s' "$mode_choice" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
     case "$mode_choice" in
-        memtrace)
+        1|memtrace)
             echo ""
             echo "Proceeding with Memtrace-integrated installation..."
             echo ""
             break
             ;;
-        vanilla)
+        2|vanilla)
             echo ""
             echo "You selected Vanilla BMad Method."
             echo "This fork includes Memtrace structural analysis integration."
@@ -34,13 +37,58 @@ while true; do
             ;;
         *)
             echo ""
-            echo "Invalid choice: '${mode_choice}'. Please type 'Memtrace' or 'Vanilla'."
+            echo "Invalid choice: '${mode_choice}'. Please enter 1 (Memtrace) or 2 (Vanilla)."
             echo ""
             ;;
     esac
 done
 
 set -e
+
+echo ""
+echo "============================================"
+echo "  Step 1: BMad Module Configuration"
+echo "============================================"
+echo ""
+
+# --- Prerequisites ---
+command -v node >/dev/null 2>&1 || { echo "Error: Node.js >= 20.12.0 is required."; exit 1; }
+command -v npm >/dev/null 2>&1 || { echo "Error: npm is required."; exit 1; }
+command -v git >/dev/null 2>&1 || { echo "Error: git is required."; exit 1; }
+
+# Ensure Node.js deps are installed for the installer
+if ! node -e "require('commander')" 2>/dev/null; then
+    echo "Installing dependencies (npm ci --omit=dev)..."
+    npm ci --omit=dev
+fi
+
+# Backup Memtrace scripts before the standard installer overwrites _bmad/scripts/
+MEMTRACE_BACKUP="bmad-memtrace-scripts-backup"
+if [ -d "_bmad/scripts/memtrace" ]; then
+    echo "Backing up _bmad/scripts/memtrace/..."
+    cp -a _bmad/scripts/memtrace "$MEMTRACE_BACKUP"
+fi
+
+# Run the standard BMad installer
+echo ""
+echo "Starting standard BMad Method installer..."
+echo "Configure modules, tools, and preferences when prompted."
+echo ""
+node tools/installer/bmad-cli.js install --directory .
+
+# Restore Memtrace scripts
+if [ -d "$MEMTRACE_BACKUP" ]; then
+    echo "Restoring Memtrace scripts..."
+    rm -rf _bmad/scripts/memtrace 2>/dev/null || true
+    cp -a "$MEMTRACE_BACKUP" _bmad/scripts/memtrace
+    rm -rf "$MEMTRACE_BACKUP"
+fi
+
+echo ""
+echo "============================================"
+echo "  Step 2: Memtrace Environment Setup"
+echo "============================================"
+echo ""
 
 echo "Starting BMad Memtrace standalone environment setup..."
 
@@ -81,9 +129,9 @@ find . -type d -empty -delete 2>/dev/null || true
 
 # Copy files back to the root of the project
 echo "Restoring core files to root..."
-# We use * to avoid copying the script over itself if it were in the staging dir,
-# though we intentionally didn't stage it this time to prevent 'Text file busy' issues.
-cp -a "$INSTALL_DIR"/* . 2>/dev/null || true
+# We use "$INSTALL_DIR"/. (not /*) to include dotfiles like .agents
+# that glob expansion would skip.
+cp -a "$INSTALL_DIR"/. . 2>/dev/null || true
 
 # Remove staging directory
 echo "Removing staging directory..."
@@ -110,4 +158,9 @@ else
     echo "  node _bmad/scripts/memtrace/inject-mcp-config.mjs --mode opencode"
 fi
 
+# Remove temporary build artifacts (deps only needed during install)
+echo "Removing temporary build artifacts..."
+rm -rf node_modules 2>/dev/null || true
+
+echo ""
 echo "Cleanup and configuration complete! You now have a clean, standalone BMad-Memtrace runtime environment."

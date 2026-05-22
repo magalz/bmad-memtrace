@@ -65,7 +65,7 @@ function escapeTableCell(str) {
  * Returns an object with key-value pairs, or null if no frontmatter.
  */
 function parseFrontmatter(content) {
-  const normalized = content.replace(/\r\n/g, '\n');
+  const normalized = content.replaceAll('\r\n', '\n');
   const trimmed = normalized.trimStart();
   if (!trimmed.startsWith('---')) return null;
 
@@ -105,7 +105,7 @@ function parseFrontmatter(content) {
  * Returns an object with key-value pairs, or null if no frontmatter.
  */
 function parseFrontmatterMultiline(content) {
-  const normalized = content.replace(/\r\n/g, '\n');
+  const normalized = content.replaceAll('\r\n', '\n');
   const trimmed = normalized.trimStart();
   if (!trimmed.startsWith('---')) return null;
 
@@ -367,7 +367,7 @@ function validateSkill(skillDir) {
 
   // --- SKILL-07: SKILL.md must have body content after frontmatter ---
   {
-    const trimmed = skillContent.replace(/\r\n/g, '\n').trimStart();
+    const trimmed = skillContent.replaceAll('\r\n', '\n').trimStart();
     let bodyStart = -1;
     if (trimmed.startsWith('---')) {
       let endIdx = trimmed.indexOf('\n---\n', 3);

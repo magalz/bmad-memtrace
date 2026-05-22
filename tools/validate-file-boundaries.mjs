@@ -26,18 +26,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT_DIR = path.resolve(__dirname);
 const PROJECT_ROOT = path.resolve(SCRIPT_DIR, '..');
 
-const args = process.argv.slice(2);
-const STRICT = args.includes('--strict');
-const VERBOSE = args.includes('--verbose');
-const JSON_OUTPUT = args.includes('--json');
+const args = new Set(process.argv.slice(2));
+const STRICT = args.has('--strict');
+const VERBOSE = args.has('--verbose');
+const JSON_OUTPUT = args.has('--json');
 
 // Patterns for planning / sprint-status artifacts
-const PLANNING_FILE_PATTERNS = [
-  /^.*prd.*\.md$/i,
-  /^.*epic.*\.md$/i,
-  /^.*architecture.*\.md$/i,
-  /^sprint-status\.yaml$/,
-];
+const PLANNING_FILE_PATTERNS = [/^.*prd.*\.md$/i, /^.*epic.*\.md$/i, /^.*architecture.*\.md$/i, /^sprint-status\.yaml$/];
 
 // Absolute path patterns for Windows and Unix
 // We check paths against the outer workspace boundary, not just any absolute path
@@ -56,7 +51,7 @@ function escapeAnnotation(str) {
 }
 
 function escapeTableCell(str) {
-  return String(str).replaceAll('|', '\\|');
+  return String(str).replaceAll('|', String.raw`\|`);
 }
 
 // --- Git root detection ---
@@ -67,7 +62,7 @@ function findGitRoot(startDir) {
       cwd: startDir,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 10000,
+      timeout: 10_000,
     }).trim();
     return path.resolve(gitRoot);
   } catch {
@@ -80,11 +75,17 @@ function findGitRoot(startDir) {
 function scanDirectory(dirPath) {
   try {
     if (!fs.existsSync(dirPath)) return [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
   const results = [];
   function walk(current) {
     let entries;
-    try { entries = fs.readdirSync(current, { withFileTypes: true }); } catch { return; }
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const entry of entries) {
       const fullPath = path.join(current, entry.name);
       if (entry.name === '.git' || entry.name === 'node_modules') continue;
@@ -102,7 +103,9 @@ function scanDirectory(dirPath) {
           } else if (stat.isFile()) {
             results.push(realPath);
           }
-        } catch { /* broken symlink, skip */ }
+        } catch {
+          /* broken symlink, skip */
+        }
       }
     }
   }
@@ -113,11 +116,17 @@ function scanDirectory(dirPath) {
 function findFilesMatching(rootDir, patterns) {
   try {
     if (!fs.existsSync(rootDir)) return [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
   const results = [];
   function walk(current) {
     let entries;
-    try { entries = fs.readdirSync(current, { withFileTypes: true }); } catch { return; }
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const entry of entries) {
       const fullPath = path.join(current, entry.name);
       if (entry.name === '.git' || entry.name === 'node_modules') continue;
@@ -134,13 +143,19 @@ function findFilesMatching(rootDir, patterns) {
         try {
           const realPath = fs.realpathSync(fullPath);
           const stat = fs.statSync(realPath);
-          if (stat.isDirectory()) { walk(realPath); }
-          else if (stat.isFile()) {
+          if (stat.isDirectory()) {
+            walk(realPath);
+          } else if (stat.isFile()) {
             for (const p of patterns) {
-              if (p.test(path.basename(realPath))) { results.push(realPath); break; }
+              if (p.test(path.basename(realPath))) {
+                results.push(realPath);
+                break;
+              }
             }
           }
-        } catch { /* skip broken symlink */ }
+        } catch {
+          /* skip broken symlink */
+        }
       }
     }
   }
@@ -150,63 +165,80 @@ function findFilesMatching(rootDir, patterns) {
 
 // --- Check implementations ---
 
-function checkBoundary01(gitRoot) {
+function checkDirBoundary(gitRoot, dirSegments, ruleName) {
   const findings = [];
-  const parentWorkspace = path.resolve(gitRoot, '..');
-  const candidateDirs = [
-    { path: path.join(gitRoot, '.agents', 'skills'), label: 'git-root' },
-    { path: path.join(parentWorkspace, '.agents', 'skills'), label: 'outer-workspace' },
-  ];
+  const dirPath = path.join(gitRoot, ...dirSegments);
+  const dirLabel = dirSegments.join('/');
 
   let totalFiles = 0;
+  const dirExists = fs.existsSync(dirPath);
 
-  for (const { path: dirPath, label } of candidateDirs) {
-    if (!fs.existsSync(dirPath)) {
-      if (VERBOSE) {
-        findings.push({
-          rule: 'BOUNDARY-01',
-          severity: 'LOW',
-          title: `.agents/skills/ not found at ${label}`,
-          file: `.agents/skills/ (${label})`,
-          detail: `Directory does not exist at ${dirPath}`,
-        });
-      }
-      continue;
-    }
-
+  if (dirExists) {
     const files = scanDirectory(dirPath);
-    totalFiles += files.length;
+    totalFiles = files.length;
 
     for (const file of files) {
       if (!pathStartsWith(file, gitRoot)) {
-        const rel = path.relative(parentWorkspace, file);
+        const rel = path.relative(gitRoot, file);
         findings.push({
-          rule: 'BOUNDARY-01',
+          rule: ruleName,
           severity: 'CRITICAL',
           title: 'File outside git repo boundary',
           file: rel,
-          detail: `Resolves to ${file} which is outside git root ${gitRoot}. Located at ${label}.`,
+          detail: `Resolves to ${file} which is outside git root ${gitRoot}.`,
         });
       }
     }
+
+    if (VERBOSE) {
+      findings.push({
+        rule: ruleName,
+        severity: 'LOW',
+        title: `${dirLabel}/ found at git root`,
+        file: `${dirLabel}/`,
+        detail: `Directory exists at ${dirPath} with ${totalFiles} files.`,
+      });
+    }
+  } else {
+    if (VERBOSE) {
+      findings.push({
+        rule: ruleName,
+        severity: 'LOW',
+        title: `${dirLabel}/ not found at git root`,
+        file: `${dirLabel}/`,
+        detail: `Directory does not exist at ${dirPath}.`,
+      });
+    }
   }
 
-  const criticalCount = findings.filter(f => f.severity === 'CRITICAL').length;
+  const criticalCount = findings.filter((f) => f.severity === 'CRITICAL').length;
 
-  if (totalFiles === 0) {
+  if (totalFiles === 0 && dirExists) {
     findings.push({
-      rule: 'BOUNDARY-01',
+      rule: ruleName,
       severity: 'MEDIUM',
-      title: '.agents/skills/ directory not found anywhere',
-      file: '.agents/skills/',
-      detail: 'Directory does not exist at git root or outer workspace.',
+      title: `${dirLabel}/ exists but empty`,
+      file: `${dirLabel}/`,
+      detail: `Directory exists at ${dirPath} but contains no files.`,
+    });
+  } else if (totalFiles === 0 && !dirExists) {
+    const expectedMsg =
+      ruleName === 'BOUNDARY-02'
+        ? 'Directory does not exist at git root. Expected if Epics 3-4 scripts are not yet deployed.'
+        : 'Directory does not exist at git root.';
+    findings.push({
+      rule: ruleName,
+      severity: 'MEDIUM',
+      title: `${dirLabel}/ not found`,
+      file: `${dirLabel}/`,
+      detail: expectedMsg,
     });
   } else if (criticalCount === 0) {
     findings.push({
-      rule: 'BOUNDARY-01',
+      rule: ruleName,
       severity: 'LOW',
-      title: 'All .agents/skills/ files inside git repo',
-      file: '.agents/skills/',
+      title: `All ${dirLabel}/ files inside git repo`,
+      file: `${dirLabel}/`,
       detail: `${totalFiles} files verified, all inside git root.`,
     });
   }
@@ -214,68 +246,12 @@ function checkBoundary01(gitRoot) {
   return findings;
 }
 
+function checkBoundary01(gitRoot) {
+  return checkDirBoundary(gitRoot, ['.agents', 'skills'], 'BOUNDARY-01');
+}
+
 function checkBoundary02(gitRoot) {
-  const findings = [];
-  const parentWorkspace = path.resolve(gitRoot, '..');
-  const candidateDirs = [
-    { path: path.join(gitRoot, '_bmad', 'scripts', 'memtrace'), label: 'git-root' },
-    { path: path.join(parentWorkspace, '_bmad', 'scripts', 'memtrace'), label: 'outer-workspace' },
-  ];
-
-  let totalFiles = 0;
-
-  for (const { path: dirPath, label } of candidateDirs) {
-    if (!fs.existsSync(dirPath)) {
-      if (VERBOSE) {
-        findings.push({
-          rule: 'BOUNDARY-02',
-          severity: 'LOW',
-          title: `_bmad/scripts/memtrace/ not found at ${label}`,
-          file: `_bmad/scripts/memtrace/ (${label})`,
-          detail: `Directory does not exist at ${dirPath}`,
-        });
-      }
-      continue;
-    }
-
-    const files = scanDirectory(dirPath);
-    totalFiles += files.length;
-
-    for (const file of files) {
-      if (!pathStartsWith(file, gitRoot)) {
-        const rel = path.relative(parentWorkspace, file);
-        findings.push({
-          rule: 'BOUNDARY-02',
-          severity: 'CRITICAL',
-          title: 'File outside git repo boundary',
-          file: rel,
-          detail: `Resolves to ${file} which is outside git root ${gitRoot}. Located at ${label}.`,
-        });
-      }
-    }
-  }
-
-  const criticalCount2 = findings.filter(f => f.severity === 'CRITICAL').length;
-
-  if (totalFiles === 0) {
-    findings.push({
-      rule: 'BOUNDARY-02',
-      severity: 'MEDIUM',
-      title: '_bmad/scripts/memtrace/ directory not found anywhere',
-      file: '_bmad/scripts/memtrace/',
-      detail: 'Directory does not exist at git root or outer workspace. Expected if Epics 3-4 scripts are not yet deployed.',
-    });
-  } else if (criticalCount2 === 0) {
-    findings.push({
-      rule: 'BOUNDARY-02',
-      severity: 'LOW',
-      title: 'All _bmad/scripts/memtrace/ files inside git repo',
-      file: '_bmad/scripts/memtrace/',
-      detail: `${totalFiles} files verified, all inside git root.`,
-    });
-  }
-
-  return findings;
+  return checkDirBoundary(gitRoot, ['_bmad', 'scripts', 'memtrace'], 'BOUNDARY-02');
 }
 
 function checkBoundary03(gitRoot) {
@@ -310,11 +286,7 @@ function checkBoundary03(gitRoot) {
 
 function checkBoundary04(gitRoot, cwd) {
   const findings = [];
-  const parentWorkspace = path.resolve(gitRoot, '..');
-  const candidateDirs = [
-    path.join(cwd, '_bmad-output', 'implementation-artifacts'),
-    path.join(parentWorkspace, '_bmad-output', 'implementation-artifacts'),
-  ];
+  const candidateDirs = [path.join(cwd, '_bmad-output', 'implementation-artifacts')];
 
   let implArtifactsDir = null;
   for (const dir of candidateDirs) {
@@ -331,7 +303,7 @@ function checkBoundary04(gitRoot, cwd) {
       severity: 'MEDIUM',
       title: '_bmad-output/implementation-artifacts/ directory not found',
       file: '_bmad-output/implementation-artifacts/',
-      detail: 'Cannot scan story files for absolute path leaks. Checked both git root and parent workspace.',
+      detail: 'Cannot scan story files for absolute path leaks. Checked git root path.',
     });
     return findings;
   }
@@ -349,17 +321,26 @@ function checkBoundary04(gitRoot, cwd) {
   }
 
   for (const storyFile of storyFiles) {
-    const rel = path.relative(parentWorkspace, storyFile);
+    const rel = path.relative(gitRoot, storyFile);
     let content;
-    try { content = fs.readFileSync(storyFile, 'utf-8'); } catch { continue; }
-    const lines = content.split('\n');
+    try {
+      content = fs.readFileSync(storyFile, 'utf-8');
+    } catch {
+      continue;
+    }
+    const lines = content.replaceAll('\r\n', '\n').split('\n');
 
     let inDevNotes = false;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+    for (const [i, line] of lines.entries()) {
       // Track section boundaries
-      if (/^## Dev Notes/i.test(line)) { inDevNotes = true; continue; }
-      if (/^## /i.test(line) && !/^## Dev Notes/i.test(line)) { inDevNotes = false; continue; }
+      if (/^## Dev Notes/i.test(line)) {
+        inDevNotes = true;
+        continue;
+      }
+      if (/^## /i.test(line) && !/^## Dev Notes/i.test(line)) {
+        inDevNotes = false;
+        continue;
+      }
 
       // Only check Dev Notes and References sections
       if (!inDevNotes && !/^### References/i.test(line)) continue;
@@ -373,17 +354,15 @@ function checkBoundary04(gitRoot, cwd) {
         if (/^[A-Z]:\\$/.test(absPath)) continue;
         // If the path starts inside the git root, it's fine (inner repo ref)
         if (pathStartsWith(absPath, gitRoot)) continue;
-        // Flag if the path starts with the outer workspace but NOT the git root
-        if (pathStartsWith(absPath, parentWorkspace)) {
-          findings.push({
-            rule: 'BOUNDARY-04',
-            severity: 'CRITICAL',
-            title: 'Absolute outer-workspace path in story file',
-            file: rel,
-            line: i + 1,
-            detail: `Line ${i + 1} references "${absPath}" which points to outer workspace, not inner repo.`,
-          });
-        }
+        // Flag any absolute path outside the git root
+        findings.push({
+          rule: 'BOUNDARY-04',
+          severity: 'CRITICAL',
+          title: 'Absolute path outside git root in story file',
+          file: rel,
+          line: i + 1,
+          detail: `Line ${i + 1} references "${absPath}" which is outside git root ${gitRoot}.`,
+        });
       }
 
       // Check Unix absolute paths
@@ -491,7 +470,10 @@ function formatJson(allFindings) {
 
 // --- Main ---
 
-if (process.argv[1] && (process.argv[1].endsWith('validate-file-boundaries.mjs') || process.argv[1].endsWith('validate-file-boundaries.js'))) {
+if (
+  process.argv[1] &&
+  (process.argv[1].endsWith('validate-file-boundaries.mjs') || process.argv[1].endsWith('validate-file-boundaries.js'))
+) {
   const gitRoot = findGitRoot(PROJECT_ROOT);
   if (!gitRoot) {
     console.error('Error: Not inside a git repository. Cannot determine repo boundary.');
@@ -517,9 +499,7 @@ if (process.argv[1] && (process.argv[1].endsWith('validate-file-boundaries.mjs')
 
   allFindings.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 
-  const { output: formatted, hasHighPlus } = JSON_OUTPUT
-    ? formatJson(allFindings)
-    : formatHumanReadable(allFindings);
+  const { output: formatted, hasHighPlus } = JSON_OUTPUT ? formatJson(allFindings) : formatHumanReadable(allFindings);
 
   console.log(formatted);
 

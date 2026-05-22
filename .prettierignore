@@ -10,3 +10,15 @@ _bmad*/
 
 # IDE integration folders (user-specific, not in repo)
 .junie/
+
+# Upstream BMad docs site (pre-existing formatting, not project-controlled)
+website/
+
+# Upstream BMad tools (pre-existing formatting, not project-controlled)
+tools/installer/
+tools/build-docs.mjs
+tools/fix-doc-links.js
+tools/format-workflow-md.js
+tools/migrate-custom-module-paths.js
+tools/validate-doc-links.js
+tools/validate-file-refs.js

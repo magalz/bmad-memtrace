@@ -116,6 +116,24 @@ If activation failed to load persistent_facts, this context is sufficient:
    - If the user opts to chunk: agree on the first group, narrow `{diff_output}` accordingly, and list the remaining groups for the user to note for follow-up runs.
    - If the user declines: proceed as-is with the full diff.
 
+<!-- CHUNKED-REVIEW SCOPE LIMITATION
+When a diff is chunked (exceeds ~3000 lines and user opted to split by file group):
+
+LIMITATION: Each chunk is reviewed in isolation. The reviewer sees only the
+files in the current chunk, not the full diff. Cross-chunk interactions --
+e.g., a function defined in chunk A and called in chunk B -- are invisible
+to the textual review layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor).
+
+MITIGATION: The structural audit (blast radius + dead code, run in this step)
+queries the FULL symbol set from the complete diff, NOT per-chunk symbols.
+This means cross-chunk dependency detection (via get_impact) and dead code
+detection (via find_dead_code) uses the complete change set, preserving
+system-level awareness even when the human reviewer only sees one chunk.
+
+When presenting findings, note: "Chunked review -- cross-chunk interactions
+may not be reflected in textual findings. Structural audit covers full diff."
+-->
+
 7. **Run structural deep audit queries (Memtrace).** If the repository is indexed by Memtrace, independently verify the diff's structural impact. This step is DIAGNOSTIC — the review continues regardless of availability.
 
    **Check Availability:**
@@ -123,9 +141,37 @@ If activation failed to load persistent_facts, this context is sufficient:
    - Check the `last_indexed_at` value — if older than 30 minutes, flag as stale and skip graph queries
    - If not indexed or stale, set `{memtrace_blast_radius}` = `"unavailable"` and `{memtrace_dead_code}` = `"unavailable"`, then skip to CHECKPOINT
 
+   **New-file detection (freshness guard):**
+   - Parse `{diff_output}` to detect files that are brand-new (only `+` lines, no `-` lines at all)
+   - A file is "new" if: file appears in `+++ b/<path>` with zero `-` hunks (no removed lines for that path)
+   - For each new file detected:
+     - Note: "New file `<path>` — may not be in the Memtrace index yet. Proceeding with text-based review for this file."
+     - Skip graph queries (get_impact, find_dead_code) for that file only
+     - Continue with remaining (existing) files normally
+     - Do NOT skip the whole review — this is per-file, advisory only
+   - This guard prevents false negatives when queries return empty for files the index hasn't seen yet
+
    **Extract modified symbols from the diff:**
    - Parse `{diff_output}` to identify modified functions, methods, classes, and exported variables
    - Extract symbol names from changed lines (lines starting with `+` or `-` in function/class/method declarations)
+   - Use language-specific patterns to extract symbol names:
+     | Language | Declaration Pattern | Regex (match `+`/`-` lines) | Group |
+     |----------|--------------------|------------------------------|-------|
+     | JS/TS | `function name(` | `/^[+-]\s*(export\s+)?(async\s+)?function\s+(\w+)/` | 3 |
+     | JS/TS | `class Name` | `/^[+-]\s*(export\s+)?class\s+(\w+)/` | 2 |
+     | JS/TS | `const name =` | `/^[+-]\s*(export\s+)?const\s+(\w+)\s*=/` | 2 |
+     | Python | `def name(` | `/^[+-]\s*def\s+(\w+)\s*\(/` | 1 |
+     | Python | `class Name:` | `/^[+-]\s*class\s+(\w+)/` | 1 |
+     | Go | `func Name(` | `/^[+-]\s*func\s+(\w+)\s*\(/` | 1 |
+     | Go | `func (r *T) Name(` | `/^[+-]\s*func\s+\([^)]*\)\s+(\w+)\s*\(/` | 1 |
+     | Rust | `fn name(` | `/^[+-]\s*(pub\s+)?fn\s+(\w+)\s*[<(]/` | 2 |
+     | Rust | `impl BlockName` | `/^[+-]\s*impl\s+(\w+)/` | 1 |
+     | Ruby | `def name` | `/^[+-]\s*def\s+(\w+)/` | 1 |
+     | Ruby | `class Name` | `/^[+-]\s*class\s+(\w+)/` | 1 |
+   - Also handle anonymous/arrow function bindings:
+     - `const x = () => { ... }` or `const x = function() { ... }` → extract `x`
+     - `export default () => { ... }` or `module.exports = () => { ... }` → flag as "unknown-anonymous" (not extracted as named symbol)
+     - Arrow callbacks passed as arguments (`.map(() => ...)`, `.then(() => ...)`) → do NOT extract
    - De-duplicate and limit to at most 15 symbols (prioritize: exported > internal, functions > variables)
    - For each symbol, note its containing file path
    - If no modified symbols are extracted (e.g., only config files, comments, or whitespace changes), skip both blast radius and dead code queries — set `{memtrace_blast_radius}` = `"empty"` and `{memtrace_dead_code}` = `"empty"`
@@ -140,6 +186,14 @@ If activation failed to load persistent_facts, this context is sufficient:
    - Set `{memtrace_blast_radius}` to the structured results (or `"partial"` if some queries failed, or `"unavailable"` if ALL queries failed)
 
    **Run dead code audit (`find_dead_code`):**
+   - **Path normalization:** Before iterating files, normalize file paths from the diff:
+     - Determine git repo root via `git rev-parse --show-toplevel`
+     - For each unique modified file path:
+       - If absolute AND starts with git root → strip root prefix to make repo-relative
+       - If Windows `\` separators → replace with `/`
+       - If path cannot be normalized to repo-relative → flag as "non-standard path" and skip
+     - Apply normalization to BOTH `--target` for dead code AND extracted symbol lookups for blast radius
+   - **Skip deleted files:** Before iterating, filter out files that appear only in `-` lines (deleted entirely, e.g. `+++ /dev/null` or all hunks are `-`-only). Deleted files have no HEAD symbols — `find_dead_code` would error. Note count of skipped deleted files for CHECKPOINT summary.
    - For each UNIQUE modified file (not per-symbol), call the adapter:
      `node _bmad/scripts/memtrace/memtrace-adapter.mjs --target <file-path> --query find_dead_code --check-freshness`
    - Process STRICTLY SEQUENTIALLY using `for...of` with `await`
@@ -151,6 +205,30 @@ If activation failed to load persistent_facts, this context is sufficient:
    - If `list_indexed_repositories` returns empty or the project repo is not indexed: skip ALL queries, set both variables to `"unavailable"`
    - If any individual query times out or fails: skip that query only, mark results as `"partial"`, continue with remaining symbols/files
    - NEVER block or halt the review on Memtrace availability — the structural audit is supplemental intelligence
+
+<!-- JSON SCHEMA -- Structured Audit Results
+These are the shapes produced by `memtrace-adapter.mjs` on exit 0.
+
+Blast radius (`--query get_impact --summarize`):
+{
+  "symbol": "<function-or-class-name>",
+  "total_affected": <number>,
+  "critical_dependents": [
+    { "name": "<dependent-symbol>", "depth": <1|2|3> }
+  ],
+  "module_impact": [
+    { "module": "<community-or-directory>", "count": <number> }
+  ]
+}
+
+Dead code (`--query find_dead_code`):
+{
+  "file": "<repo-relative-path>",
+  "dead_symbols": [
+    { "name": "<function-or-method-name>", "kind": "Function|Method|Class", "line": <number> }
+  ]
+}
+-->
 
 ### CHECKPOINT
 

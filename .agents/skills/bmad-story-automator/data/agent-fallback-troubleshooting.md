@@ -1,6 +1,6 @@
 # Agent Fallback Troubleshooting
 
-### Issue: Session spawns Claude instead of Codex
+## Issue: Session spawns Claude instead of Codex
 
 **Symptoms:**
 - Output shows Claude-specific messages (e.g., "You've used 84% of your weekly limit")

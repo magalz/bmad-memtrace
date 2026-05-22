@@ -95,6 +95,19 @@ feature requests across all historical reports found. Include only entries with 
 If the `_bmad-output/telemetry/` directory does not exist or is empty, skip to 7c (all
 requests are new) — this is normal for the first-ever telemetry run.
 
+**Format detection:** Historical reports may use one of two Feature Requests table formats:
+- **5-column format** (current, post-Story 5.3): `| ID | Request | Priority (H/M/L) | Status | Upvotes | Context |`
+- **4-column format** (legacy, pre-Story 5.3, no Upvotes column): `| ID | Request | Priority (H/M/L) | Status | Context |`
+
+Detect the format by counting header columns. When parsing a 4-column report, treat each
+entry as having `Upvotes=1`. Both intra-sprint dedup (7c final pass) and cross-sprint
+consolidation use the same detection — the format may vary across reports.
+
+If the column count is not 4 or 5, treat the table as unparseable and skip that report
+(carry forward no entries from it). Note: pipe characters `|` inside cell content must
+be escaped as `\|` in Markdown — rows with unescaped pipes may skew column counting
+and should be treated as unparseable.
+
 #### 7b: Detect Duplicates
 
 For each candidate feature request from this sprint, compare against the consolidated list
@@ -287,9 +300,11 @@ Generate the report as a Markdown file following this exact structure. Every sec
 ### Index Management
 - `index_directory` — Parse and index a local directory into the graph
 - `list_indexed_repositories` — List indexed repos with freshness timestamps
+- `get_repository_stats` — Node/edge counts, community/episode count, last-indexed timestamp
 - `watch_directory` — Enable live incremental re-indexing on file save
 - `unwatch_directory` — Stop watching a directory for changes
 - `list_jobs` — List indexing jobs with status and timestamps
+- `check_job_status` — Poll the status of a background indexing job
 - `list_watched_paths` — Currently watched directories
 - `list_worktrees` — Known worktree overlays
 - `cleanup_episodes` — Delete historical episode snapshots
@@ -314,6 +329,9 @@ Generate the report as a Markdown file following this exact structure. Every sec
 - **Directory creation:** If `_bmad-output/telemetry/` does not exist, create it before saving
 - **File collision:** If a file with the exact timestamp already exists, increment the timestamp by 1 second until unique
 - **Permission failure:** If the agent cannot write to the output directory, output the report to STDOUT with a clear warning and do NOT lose the report data
+- **Post-write validation:** After writing the report file, confirm the file exists at the configured save path and is non-empty. If the file does not exist or is empty, the write silently failed — flag this explicitly and retry the save once
+- **STDOUT retry:** If permission failure forced fallback to STDOUT, attempt a second save to `_bmad-output/telemetry/` after outputting to STDOUT. The STDOUT output is a safety net, not a substitute for file persistence
+- **Retry failure:** If the second save attempt also fails, output the report to STDOUT with a clear warning as the final fallback — do not attempt further retries
 - **Only create the report file** — do NOT create or modify any other files during this workflow
 - **Historical report reading:** When reading prior reports for deduplication, target ONLY
   the "Feature Requests & Feedback" section of each file. Do not re-read entire reports.

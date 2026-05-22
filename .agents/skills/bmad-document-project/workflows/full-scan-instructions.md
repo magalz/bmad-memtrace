@@ -421,7 +421,7 @@ findings.batches_completed: [
     - Call `get_api_topology` (repo_id={{repo_id}}, include_external=false, min_confidence=0.7) for cross-service HTTP calls
     - This reveals which other services call this repo's endpoints AND which services this repo calls
     - Filter to edges where THIS repo is EITHER the source OR target
-    - Store as `{{memtrace_api_topology}}` for Step 7 (integration architecture) and Step 8 (architecture docs)
+    - Store as `{{api_topology_data}}` for Step 7 (integration architecture) and Step 8 (architecture docs)
 
     **C) Build API Contracts from Graph Data:**
     For each endpoint group:

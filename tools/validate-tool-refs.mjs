@@ -28,48 +28,79 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT_DIR = path.resolve(__dirname);
 const PROJECT_ROOT = path.resolve(SCRIPT_DIR, '..');
 
-const args = process.argv.slice(2);
-const STRICT = args.includes('--strict');
-const VERBOSE = args.includes('--verbose');
-const JSON_OUTPUT = args.includes('--json');
+const args = new Set(process.argv.slice(2));
+const STRICT = args.has('--strict');
+const VERBOSE = args.has('--verbose');
+const JSON_OUTPUT = args.has('--json');
 
 const SEVERITY_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };
 
 // --- Known-local scripts (valid project files, NOT MCP tools) ---
 const LOCAL_SCRIPT_NAMES = new Set([
-  'memtrace-adapter.mjs', 'qa-memtrace.mjs', 'validate-dead-code.mjs',
-  'memtrace-restart.mjs', 'inject-mcp-config.mjs', 'pitfalls-catalog.json',
+  'memtrace-adapter.mjs',
+  'qa-memtrace.mjs',
+  'validate-dead-code.mjs',
+  'memtrace-restart.mjs',
+  'inject-mcp-config.mjs',
+  'pitfalls-catalog.json',
 ]);
 
 // --- Embedded 45-tool authoritative catalog ---
 const VALID_TOOLS = [
-  'find_code', 'find_symbol', 'get_source_window', 'get_directory_tree',
-  'get_codebase_briefing', 'list_communities', 'list_processes', 'get_process_flow',
-  'get_symbol_context', 'analyze_relationships', 'get_impact', 'find_dependency_path',
-  'get_api_topology', 'find_api_calls', 'find_api_endpoints', 'get_service_diagram',
-  'find_dead_code', 'find_most_complex_functions', 'find_bridge_symbols', 'find_central_symbols',
+  'find_code',
+  'find_symbol',
+  'get_source_window',
+  'get_directory_tree',
+  'get_codebase_briefing',
+  'list_communities',
+  'list_processes',
+  'get_process_flow',
+  'get_symbol_context',
+  'analyze_relationships',
+  'get_impact',
+  'find_dependency_path',
+  'get_api_topology',
+  'find_api_calls',
+  'find_api_endpoints',
+  'get_service_diagram',
+  'find_dead_code',
+  'find_most_complex_functions',
+  'find_bridge_symbols',
+  'find_central_symbols',
   'calculate_cyclomatic_complexity',
-  'get_evolution', 'get_changes_since', 'get_timeline', 'get_episode_replay', 'get_cochange_context',
+  'get_evolution',
+  'get_changes_since',
+  'get_timeline',
+  'get_episode_replay',
+  'get_cochange_context',
   'detect_changes',
-  'get_repository_stats', 'index_directory', 'list_indexed_repositories',
-  'watch_directory', 'unwatch_directory', 'list_jobs', 'list_watched_paths', 'list_worktrees',
-  'cleanup_episodes', 'cleanup_stale_records', 'cleanup_worktrees',
-  'replay_history', 'link_repositories', 'record_external_episode', 'delete_repository',
+  'get_repository_stats',
+  'index_directory',
+  'list_indexed_repositories',
+  'watch_directory',
+  'unwatch_directory',
+  'list_jobs',
+  'list_watched_paths',
+  'list_worktrees',
+  'cleanup_episodes',
+  'cleanup_stale_records',
+  'cleanup_worktrees',
+  'replay_history',
+  'link_repositories',
+  'record_external_episode',
+  'delete_repository',
   'check_job_status',
-  'embed_diag', 'embed_reset_breaker',
+  'embed_diag',
+  'embed_reset_breaker',
 ];
 
 // Full tool names include both short and memtrace_-prefixed variants
-const FULL_VALID_TOOLS = [
-  ...VALID_TOOLS,
-  ...VALID_TOOLS.map(t => `memtrace_${t}`),
-];
+const FULL_VALID_TOOLS = [...VALID_TOOLS, ...VALID_TOOLS.map((t) => `memtrace_${t}`)];
 const VALID_TOOL_SET = new Set(FULL_VALID_TOOLS);
 
 // Build alternation regex from valid tool names (short + full MCP names)
-const TOOL_ALTERNATION = FULL_VALID_TOOLS
-  .sort((a, b) => b.length - a.length)  // longer first for greedy matching
-  .map(t => t.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+const TOOL_ALTERNATION = FULL_VALID_TOOLS.sort((a, b) => b.length - a.length) // longer first for greedy matching
+  .map((t) => t.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`))
   .join('|');
 const TOOL_REF_RE = new RegExp(`\\b(${TOOL_ALTERNATION})\\b`, 'g');
 
@@ -87,7 +118,7 @@ function escapeAnnotation(str) {
 }
 
 function escapeTableCell(str) {
-  return String(str).replaceAll('|', '\\|');
+  return String(str).replaceAll('|', String.raw`\|`);
 }
 
 function pathStartsWith(target, prefix) {
@@ -102,7 +133,7 @@ function findGitRoot(startDir) {
       cwd: startDir,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 10000,
+      timeout: 10_000,
     }).trim();
     return path.resolve(gitRoot);
   } catch {
@@ -116,7 +147,11 @@ function scanFiles(rootDir, extensions) {
   const results = [];
   function walk(current) {
     let entries;
-    try { entries = fs.readdirSync(current, { withFileTypes: true }); } catch { return; }
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const entry of entries) {
       if (entry.name === '.git' || entry.name === 'node_modules') continue;
       const fullPath = path.join(current, entry.name);
@@ -135,10 +170,15 @@ function scanFiles(rootDir, extensions) {
 }
 
 function safeReadFile(filePath) {
-  try { return fs.readFileSync(filePath, 'utf-8'); } catch (err) {
-    if (err.code === 'ENOENT') return null;
-    if (err.code === 'EACCES') { console.error(`Permission denied: ${filePath}`); return null; }
-    console.error(`Read error (${err.code}) for ${filePath}: ${err.message}`);
+  try {
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    if (error.code === 'EACCES') {
+      console.error(`Permission denied: ${filePath}`);
+      return null;
+    }
+    console.error(`Read error (${error.code}) for ${filePath}: ${error.message}`);
     return null;
   }
 }
@@ -171,8 +211,13 @@ function matchHallucinatedToolNames(content) {
   while ((match = HALLUCINATED_TOOL_RE.exec(stripped)) !== null) {
     const fullName = match[1];
     // Skip known non-tool patterns
-    if (fullName === 'memtrace_blast_radius' || fullName === 'memtrace_dead_code' ||
-        fullName === 'memtrace_structural_insights' || fullName === 'memtrace_tech_insights') continue;
+    if (
+      fullName === 'memtrace_blast_radius' ||
+      fullName === 'memtrace_dead_code' ||
+      fullName === 'memtrace_structural_insights' ||
+      fullName === 'memtrace_tech_insights'
+    )
+      continue;
     const shortName = fullName.replace(/^memtrace_/, '');
     if (VALID_TOOL_SET.has(fullName) || VALID_TOOL_SET.has(shortName)) continue;
     found.push({ fullName, shortName, index: match.index });
@@ -282,24 +327,26 @@ function checkTool01(skillsDir, srcDir, gitRoot) {
 
   // Report tool usage summary
   const usedTools = Object.keys(toolUsageCounts);
-  const unusedTools = VALID_TOOLS.filter(t => !toolUsageCounts[t]);
-  const validCount = usedTools.filter(t => VALID_TOOL_SET.has(t)).length;
+  const unusedTools = VALID_TOOLS.filter((t) => !toolUsageCounts[t]);
+  const validCount = usedTools.filter((t) => VALID_TOOL_SET.has(t)).length;
 
   if (VERBOSE) {
-    findings.push({
-      rule: 'TOOL-01',
-      severity: 'INFO',
-      title: 'Tool usage distribution',
-      file: '(aggregate)',
-      detail: `${validCount}/${VALID_TOOLS.length} tools referenced across ${totalMdFiles} .md files. ${usedTools.length - validCount} unrecognized names.`,
-    });
-    findings.push({
-      rule: 'TOOL-01',
-      severity: 'INFO',
-      title: 'Unreferenced tools',
-      file: '(aggregate)',
-      detail: `${unusedTools.length} tools in catalog not found in any file: ${unusedTools.join(', ')}`,
-    });
+    findings.push(
+      {
+        rule: 'TOOL-01',
+        severity: 'INFO',
+        title: 'Tool usage distribution',
+        file: '(aggregate)',
+        detail: `${validCount}/${VALID_TOOLS.length} tools referenced across ${totalMdFiles} .md files. ${usedTools.length - validCount} unrecognized names.`,
+      },
+      {
+        rule: 'TOOL-01',
+        severity: 'INFO',
+        title: 'Unreferenced tools',
+        file: '(aggregate)',
+        detail: `${unusedTools.length} tools in catalog not found in any file: ${unusedTools.join(', ')}`,
+      },
+    );
   }
 
   if (invalidRefs.length === 0 && !VERBOSE) {
@@ -363,8 +410,8 @@ function checkTool02(telemetrySkillPath, gitRoot) {
   }
 
   // Check each catalog tool against valid set
-  const invalidTools = [...catalogTools].filter(t => !VALID_TOOL_SET.has(t));
-  const missingFromCatalog = VALID_TOOLS.filter(t => !catalogTools.has(t));
+  const invalidTools = [...catalogTools].filter((t) => !VALID_TOOL_SET.has(t));
+  const missingFromCatalog = VALID_TOOLS.filter((t) => !catalogTools.has(t));
 
   for (const tool of invalidTools) {
     findings.push({
@@ -416,9 +463,17 @@ function checkTool03(skillsDir, gitRoot) {
 
   // All Epic 6 related skills and their files
   const epic6Patterns = [
-    'bmad-code-review', 'gds-code-review', 'bmad-tea', 'bmad-testarch-trace',
-    'bmad-agent-tech-writer', 'bmad-agent-pm', 'bmad-document-project',
-    'bmad-party-mode', 'bmad-retrospective', 'bmad-quick-dev', 'bmad-story-automator',
+    'bmad-code-review',
+    'gds-code-review',
+    'bmad-tea',
+    'bmad-testarch-trace',
+    'bmad-agent-tech-writer',
+    'bmad-agent-pm',
+    'bmad-document-project',
+    'bmad-party-mode',
+    'bmad-retrospective',
+    'bmad-quick-dev',
+    'bmad-story-automator',
   ];
 
   if (!fs.existsSync(skillsDir)) {
@@ -455,12 +510,9 @@ function checkTool03(skillsDir, gitRoot) {
     if (MEMTRACE_CONTEXT_HEADING_RE.test(content)) {
       totalBlocks++;
       filesWithBlocks.push(rel);
-    } else if (VERBOSE) {
-      // Count any heading containing "Memtrace Context" (without emoji)
-      if (/^#{1,6}\s+.*Memtrace\s+Context/im.test(content)) {
-        totalBlocks++;
-        filesWithBlocks.push(rel);
-      }
+    } else if (VERBOSE && /^#{1,6}\s+.*Memtrace\s+Context/im.test(content)) {
+      totalBlocks++;
+      filesWithBlocks.push(rel);
     }
   }
 
@@ -513,7 +565,7 @@ function checkTool04(skillsDir, gitRoot) {
   }
 
   const allTomlFiles = scanFiles(skillsDir, ['.toml']);
-  const customizeTomlFiles = allTomlFiles.filter(f => path.basename(f) === 'customize.toml');
+  const customizeTomlFiles = allTomlFiles.filter((f) => path.basename(f) === 'customize.toml');
 
   let totalChecked = 0;
   let totalInvalid = 0;
@@ -695,9 +747,7 @@ if (process.argv[1] && (process.argv[1].endsWith('validate-tool-refs.mjs') || pr
     return a.rule.localeCompare(b.rule) || a.file.localeCompare(b.file);
   });
 
-  const { output: formatted, hasHighPlus } = JSON_OUTPUT
-    ? formatJson(allFindings)
-    : formatHumanReadable(allFindings);
+  const { output: formatted, hasHighPlus } = JSON_OUTPUT ? formatJson(allFindings) : formatHumanReadable(allFindings);
 
   console.log(formatted);
 

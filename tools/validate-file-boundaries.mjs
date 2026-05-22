@@ -26,10 +26,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT_DIR = path.resolve(__dirname);
 const PROJECT_ROOT = path.resolve(SCRIPT_DIR, '..');
 
-const args = process.argv.slice(2);
-const STRICT = args.includes('--strict');
-const VERBOSE = args.includes('--verbose');
-const JSON_OUTPUT = args.includes('--json');
+const args = new Set(process.argv.slice(2));
+const STRICT = args.has('--strict');
+const VERBOSE = args.has('--verbose');
+const JSON_OUTPUT = args.has('--json');
 
 // Patterns for planning / sprint-status artifacts
 const PLANNING_FILE_PATTERNS = [/^.*prd.*\.md$/i, /^.*epic.*\.md$/i, /^.*architecture.*\.md$/i, /^sprint-status\.yaml$/];
@@ -51,7 +51,7 @@ function escapeAnnotation(str) {
 }
 
 function escapeTableCell(str) {
-  return String(str).replaceAll('|', '\\|');
+  return String(str).replaceAll('|', String.raw`\|`);
 }
 
 // --- Git root detection ---
@@ -62,7 +62,7 @@ function findGitRoot(startDir) {
       cwd: startDir,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 10000,
+      timeout: 10_000,
     }).trim();
     return path.resolve(gitRoot);
   } catch {
@@ -328,12 +328,10 @@ function checkBoundary04(gitRoot, cwd) {
     } catch {
       continue;
     }
-    content = content.replace(/\r\n/g, '\n');
-    const lines = content.split('\n');
+    const lines = content.replaceAll('\r\n', '\n').split('\n');
 
     let inDevNotes = false;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+    for (const [i, line] of lines.entries()) {
       // Track section boundaries
       if (/^## Dev Notes/i.test(line)) {
         inDevNotes = true;

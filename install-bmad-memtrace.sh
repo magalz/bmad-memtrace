@@ -125,7 +125,7 @@ echo "Removing .git directory..."
 rm -rf .git
 
 # Cleanup any empty directories left behind
-find . -type d -empty -delete 2>/dev/null || true
+find . -path "./$INSTALL_DIR" -prune -o -type d -empty -delete 2>/dev/null || true
 
 # Copy files back to the root of the project
 echo "Restoring core files to root..."

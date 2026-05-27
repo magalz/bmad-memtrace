@@ -32,6 +32,7 @@ activation_steps_append = []
 
 persistent_facts = [
   "file:{project-root}/**/project-context.md",
+  "Memtrace graph queries are available for story segmentation. Use the adapter at _bmad/scripts/memtrace/memtrace-adapter.mjs or direct MCP tool list_communities to discover existing logical modules, and find_central_symbols for core architecture. Map your epics and stories around these existing structures to avoid duplicate work. All queries MUST use sequential for...of with await — NEVER Promise.all. Prefer summarized output. Timeout or stale index means skip and continue."
 ]
 
 # Scalar: executed when the workflow reaches Step 4 (Final Validation) and the

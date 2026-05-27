@@ -32,6 +32,7 @@ activation_steps_append = []
 
 persistent_facts = [
   "file:{project-root}/**/project-context.md",
+  "Memtrace architectural briefing is available for project discovery. Use the adapter at _bmad/scripts/memtrace/memtrace-adapter.mjs or direct MCP tool get_codebase_briefing to obtain an exact, structured map of the system. Leverage list_communities to extract logical modules. This enables generating an extremely accurate project-context.md, preventing missing folders or incorrect stack definitions. All queries MUST use sequential for...of with await — NEVER Promise.all. Timeout or stale index means skip and continue."
 ]
 
 # Scalar: executed when the workflow reaches Step 3 (Context Completion & Finalization),

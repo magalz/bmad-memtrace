@@ -35,6 +35,7 @@ activation_steps_append = []
 
 persistent_facts = [
   "file:{project-root}/**/project-context.md",
+  "Memtrace structural deep audit is critical for forensic debugging. When investigating failures, you MUST use the adapter at _bmad/scripts/memtrace/memtrace-adapter.mjs or direct MCP tools. Use find_dependency_path to trace execution flows leading to the error, and get_impact on the failing symbol to understand what else relies on it before suggesting a fix. All queries MUST use sequential for...of with await — NEVER Promise.all. Timeout or stale index means skip and continue."
 ]
 
 # Scalar: path to the case-file template, resolved from the skill root.

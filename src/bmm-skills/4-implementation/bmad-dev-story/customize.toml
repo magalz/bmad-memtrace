@@ -32,6 +32,7 @@ activation_steps_append = []
 
 persistent_facts = [
   "file:{project-root}/**/project-context.md",
+  "Memtrace structural deep audit is available for context gathering. During Step 1 (Gather Context), you MUST use the adapter at _bmad/scripts/memtrace/memtrace-adapter.mjs or MCP tool get_codebase_briefing to map the current architecture skeleton. This prevents duplicating components or modules that were built in previous stories. All queries MUST use sequential for...of with await — NEVER Promise.all. Timeout or stale index means skip and continue."
 ]
 
 # Scalar: executed when the workflow reaches its final step,

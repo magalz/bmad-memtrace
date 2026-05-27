@@ -32,6 +32,7 @@ activation_steps_append = []
 
 persistent_facts = [
   "file:{project-root}/**/project-context.md",
+  "Memtrace graph index is available to map test targets. Use the adapter at _bmad/scripts/memtrace/memtrace-adapter.mjs or direct MCP tools. You MUST run get_codebase_briefing and list_communities to discover all central API routes, entrypoints, and controllers. Prioritize test coverage for central symbols with high get_impact results. All queries MUST use sequential for...of with await — NEVER Promise.all. Timeout or stale index means skip and continue."
 ]
 
 # Scalar: executed when the workflow reaches Step 5 (Create Summary),

@@ -32,6 +32,7 @@ activation_steps_append = []
 
 persistent_facts = [
   "file:{project-root}/**/project-context.md",
+  "Memtrace structural context is available to ensure your quick implementation integrates correctly without side-effects. Use the adapter at _bmad/scripts/memtrace/memtrace-adapter.mjs or direct MCP tools. You MUST run get_codebase_briefing and find_central_symbols before making any edits to understand existing conventions. For any symbol modified, you MUST run get_impact to assess blast radius. All queries MUST use sequential for...of with await — NEVER Promise.all. Timeout or stale index means skip and continue."
 ]
 
 # Scalar: executed when the workflow reaches its final step,

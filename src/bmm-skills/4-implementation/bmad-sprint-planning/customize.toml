@@ -32,6 +32,7 @@ activation_steps_append = []
 
 persistent_facts = [
   "file:{project-root}/**/project-context.md",
+  "Memtrace graph queries are available to aid sprint sequencing. Use the adapter at _bmad/scripts/memtrace/memtrace-adapter.mjs or direct MCP tools. You can run list_communities to identify logical modules, and find_central_symbols to discover core modules. Group and sequence your sprint stories around these existing structures to ensure dependencies are resolved in the correct order. All queries MUST use sequential for...of with await — NEVER Promise.all. Timeout or stale index means skip and continue."
 ]
 
 # Scalar: executed when the workflow reaches its final step,
